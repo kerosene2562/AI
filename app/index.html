@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>АвтоДіагност — локальний AI-помічник</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#0c1017;color:#edf2f9}
+header{border-bottom:1px solid #253344;background:#101722;padding:20px max(25px,calc((100vw - 1140px)/2));display:flex;align-items:center;justify-content:space-between;gap:18px}
+.brand{font-size:23px;font-weight:800;letter-spacing:-.8px}.brand em{font-style:normal;color:#6fe0ac}.subtitle{font-size:12px;color:#9faec1;margin-top:4px}
+.status{display:flex;align-items:center;gap:8px;font-size:12px;color:#b9c5d5}.dot{width:8px;height:8px;border-radius:50%;background:#dfa75a;display:inline-block}.dot.online{background:#70dfaa}
+main{max-width:1140px;margin:34px auto;padding:0 22px;display:grid;grid-template-columns:0.95fr 1.05fr;gap:24px}
+.panel{background:#151c28;border:1px solid #2b3546;border-radius:18px;padding:26px;box-shadow:0 18px 50px #0002}
+h1,h2{margin:0 0 10px;font-size:23px;letter-spacing:-.4px}p{color:#aab9cb;line-height:1.5;margin:0 0 18px;font-size:14px}
+label{display:block;font-weight:650;color:#dbe5f0;font-size:12px;margin:0 0 6px}input,textarea,select{width:100%;outline:none;border:1px solid #394b62;background:#0d1420;color:#f3f6fb;border-radius:9px;padding:11px 12px;font:inherit;font-size:14px}input:focus,textarea:focus,select:focus{border-color:#69dbae}textarea{min-height:120px;resize:vertical}.field{margin-top:16px}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}button{border:0;cursor:pointer;font:inherit}.example{background:#253246;color:#c6d3e2;font-size:12px;padding:8px 10px;border-radius:999px}.example:hover{background:#334661}
+.primary{background:#6fe0ac;color:#0b2b1f;border-radius:10px;padding:13px 20px;font-weight:750;margin-top:22px;width:100%}.primary:hover{background:#9af2c8}.primary:disabled{opacity:.5;cursor:not-allowed}
+.output{min-height:310px;white-space:pre-wrap;font-size:14px;line-height:1.75;color:#e1ecf8;overflow-wrap:anywhere}.empty{color:#95a7bc;display:flex;align-items:center;justify-content:center;text-align:center;min-height:310px;border:1px dashed #394759;border-radius:12px;padding:22px}
+.warning{border:1px solid #66573d;background:#2a241c;color:#e8c995;font-size:12px;line-height:1.5;padding:12px 14px;border-radius:10px;margin-top:20px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 15px}.tag{font-size:11px;color:#6fe0ac;background:#17382d;border-radius:999px;padding:5px 9px}.secondary{background:#263448;color:#cfdbec;border-radius:8px;padding:7px 10px;font-size:12px}.secondary:disabled{opacity:.4}
+#loader{color:#6fe0ac;font-size:12px;display:none;margin-bottom:12px}#error{color:#ffb7ad;font-size:13px;margin-top:10px;white-space:pre-wrap}
+footer{max-width:1140px;margin:auto;padding:0 22px 28px;color:#8192a9;font-size:12px}
+@media(max-width:850px){main{grid-template-columns:1fr;margin:20px auto}.twocol{grid-template-columns:1fr}header{padding:16px 22px}}
+</style>
+</head>
+<body>
+<header><div><div class="brand">⚙ Авто<em>Діагност</em></div><div class="subtitle">Локальна модель • без хмарного API • OBD-II і симптоми</div></div><div class="status"><span id="dot" class="dot"></span><span id="server">Перевірка Ollama…</span></div></header>
+<main>
+<section class="panel"><h1>Що сталося з авто?</h1><p>Опиши проблему, а модель запропонує причини та безпечні перші кроки перевірки.</p>
+<form id="form">
+<div class="twocol"><div class="field"><label for="vehicle">Марка і модель</label><input id="vehicle" placeholder="Volkswagen Jetta V" value="Volkswagen Jetta V"></div><div class="field"><label for="year">Рік</label><input id="year" placeholder="2006" value="2006"></div></div>
+<div class="twocol"><div class="field"><label for="engine">Двигун</label><input id="engine" placeholder="1.6 MPI BSE" value="1.6 MPI BSE"></div><div class="field"><label for="model">Модель LLM</label><select id="model"><option value="qwen3:1.7b-q4_K_M">Qwen3 1.7B Q4 (після)</option><option value="qwen3:1.7b-q8_0">Qwen3 1.7B Q8 (до)</option></select></div></div>
+<div class="field"><label for="codes">Коди помилок (необов'язково)</label><input id="codes" placeholder="Наприклад, P0301 або 01218"></div>
+<div class="field"><label for="symptoms">Симптоми *</label><textarea id="symptoms" placeholder="Коли виникла проблема? Що саме спостерігається? Які індикатори горять?"></textarea></div>
+<div class="field"><label for="extra">Додатково</label><input id="extra" placeholder="Холодний запуск, після ремонту, пробіг тощо"></div>
+<div class="examples"><button type="button" class="example" data-case="misfire">Пропуски запалювання</button><button type="button" class="example" data-case="airbag">Помилка SRS</button><button type="button" class="example" data-case="overheat">Перегрів</button><button type="button" class="example" data-case="blower">Пічка не працює</button></div>
+<button id="submit" class="primary">Проаналізувати несправність</button>
+</form></section>
+<section class="panel"><div class="toolbar"><div><h2>Результат аналізу</h2><p style="margin:0">Відповідь надходить поступово</p></div><button id="copy" class="secondary" disabled>Копіювати</button></div><div id="loader">● Модель формує відповідь…</div><div id="output" class="output empty">Тут з'явиться аналіз автомобіля. Обери приклад або опиши власну несправність.</div><div id="error" role="alert"></div>
+<div class="warning">Увага: це лише первинна інформаційна оцінка. За проблем із гальмами, керуванням, подушками безпеки або під час перегріву звернись до кваліфікованого спеціаліста. Не сприймай відповідь моделі як діагноз.</div></section>
+</main><footer>Навчальний проєкт • Лабораторна робота 4 • OpenAI-сумісний API Ollama</footer>
+<script>
+const $ = id => document.getElementById(id);
+const samples = {
+ misfire:{codes:'P0301',symptoms:'На холостому ходу двигун троїть, індикатор Check Engine блимає, при розгоні смикається.',extra:'Проблема помітна на прогрітому двигуні'},
+ airbag:{codes:'01218, 001',symptoms:'Після того, як пасажир сів у крісло, загорілася лампа airbag. Інших симптомів немає.',extra:'Потрібно зрозуміти безпечний порядок перевірки'},
+ overheat:{codes:'',symptoms:'Стрілка температури швидко піднялася, з-під капота йде пара. Що робити?',extra:'Автомобіль зупинився на узбіччі'},
+ blower:{codes:'',symptoms:'На різних швидкостях вентилятора в салоні не чути його роботи, обдуву майже немає.',extra:'Потрібен порядок перевірок'}
+};
+document.querySelectorAll('[data-case]').forEach(b=>b.onclick=()=>{const d=samples[b.dataset.case];['codes','symptoms','extra'].forEach(k=>$(k).value=d[k]);});
+async function status(){try{const r=await fetch('/api/health');const d=await r.json();$('server').textContent=d.ok?'Ollama працює':'Ollama не запущено';$('dot').className=d.ok?'dot online':'dot';}catch(e){$('server').textContent='Сервер недоступний';}}
+status(); setInterval(status, 12000);
+$('copy').onclick=()=>navigator.clipboard.writeText($('output').textContent);
+$('form').onsubmit=async e=>{e.preventDefault();const fields=['vehicle','year','engine','codes','symptoms','extra','model'];let data={};fields.forEach(k=>data[k]=$(k).value.trim());
+$('error').textContent=''; if(!data.symptoms&&!data.codes){$('error').textContent='Заповни симптоми або код помилки';return;}
+$('submit').disabled=true;$('copy').disabled=true;$('loader').style.display='block';$('output').classList.remove('empty');$('output').textContent='';
+const ac=new AbortController(); const timer=setTimeout(()=>ac.abort(),190000);
+try{const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:ac.signal});
+if(!res.ok){let j={};try{j=await res.json()}catch(e){}throw Error(j.error||`Помилка сервера: ${res.status}`);}
+let reader=res.body.getReader(),decoder=new TextDecoder(),buffer='',finished=false;while(!finished){let {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const pieces=buffer.split('\n');buffer=pieces.pop();for(const line of pieces){if(!line.startsWith('data: '))continue;let raw=line.substring(6).trim();if(raw==='[DONE]'){finished=true;break;}try{let msg=JSON.parse(raw), delta=msg.choices?.[0]?.delta?.content||'';$('output').textContent+=delta;}catch(e){}}}
+if(!$('output').textContent.trim())throw Error('Модель повернула порожню відповідь. Перевір, чи вимкнено режим міркування.');
+$('copy').disabled=false;
+}catch(err){$('error').textContent=err.name==='AbortError'?'Час очікування вичерпано. Перевір Ollama і спробуй ще раз.':err.message;if(!$('output').textContent)$('output').classList.add('empty');}
+finally{clearTimeout(timer);$('loader').style.display='none';$('submit').disabled=false;}
+};
+</script>
+</body></html>

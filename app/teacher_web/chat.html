@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Локальний чат</title>
+<link rel="stylesheet" href="style.css">
+<!--
+  Відкривайте через локальний сервер, а не з диска, інакше браузер заблокує запити (CORS):
+      python -m http.server 8000 --bind 127.0.0.1      (у цій теці)
+      http://localhost:8000/chat.html
+-->
+</head>
+<body>
+<main>
+  <h1>Локальний чат</h1>
+  <nav>Чат · <a href="bench.html">Навантажувальний тест</a></nav>
+  <div id="banner">Сторінку відкрито з диска, тож браузер заблокує запити до сервера (CORS). Запустіть у цій теці
+    <code>python -m http.server 8000 --bind 127.0.0.1</code> і відкрийте <code>http://localhost:8000/chat.html</code>.</div>
+  <details class="settings" open>
+    <summary>Налаштування</summary>
+    <div class="grid">
+      <label>Протокол 
+        <select id="api">
+          <option value="openai">OpenAI-сумісний (будь-який рантайм)</option>
+          <option value="ollama">Ollama (рідний API)</option>
+        </select></label>
+      <label>Адреса API <input id="baseUrl" value="http://localhost:11434/v1" placeholder="http://localhost:11434/v1"></label>
+      <label>Модель <input id="model" list="models" value="qwen3:1.7b" placeholder="qwen3:1.7b"><datalist id="models"></datalist></label>
+      <label>API-ключ <input id="apiKey" type="password" placeholder="локально не потрібен"></label>
+      <label>Міркування 
+        <select id="reasoningEffort">
+          <option value="none">без міркування</option>
+          <option value="">як у моделі за замовчуванням</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select></label>
+      <label>Макс. токенів відповіді <input id="maxTokens" type="number" min="1" placeholder="2000"></label>
+      <label>Temperature <input id="temperature" type="number" min="0" max="2" step="0.1"></label>
+      <label>Top-p <input id="topP" type="number" min="0" max="1" step="0.05"></label>
+      <label>Seed <input id="seed" type="number" placeholder="випадковий"></label>
+      <label class="ollama-only">Top-k <input id="topK" type="number" min="1"></label>
+      <label class="ollama-only">Розмір контексту, токенів <input id="numCtx" type="number" min="256" step="256"></label>
+    </div>
+    <p class="hint">Порожнє поле — значення за замовчуванням, показане в ньому сірим. Для Ollama це справжні значення моделі. Top-k і розмір контексту можна задати лише через рідний
+      API Ollama: в OpenAI-сумісному API таких параметрів немає. У рідному API Ollama low/medium/high означають просто «з міркуванням».</p>
+  </details>
+  <div id="messages" style="flex: 1; display: flex; flex-direction: column; gap: 10px;"></div>
+  <form id="form" style="display: flex; gap: 8px;">
+    <textarea id="input" style="flex: 1; min-height: 44px; resize: vertical;"
+              placeholder="Ваш запит… (Enter — надіслати, Shift+Enter — новий рядок)"></textarea>
+    <button id="send" type="submit">Надіслати</button>
+    <button id="clear" type="button" class="secondary">Очистити</button>
+  </form>
+</main>
+<script type="module">
+import { listModels, modelDefaults, persistFields, readSettings, syncOllamaOnlyFields } from "./client.js";
+
+const $ = (id) => document.getElementById(id);
+const SETTING_IDS = ["api", "baseUrl", "apiKey", "model", "reasoningEffort", "maxTokens", "temperature", "topP", "seed", "topK", "numCtx"];
+
+if (location.protocol === "file:") $("banner").style.display = "block";
+
+async function refreshModels() {
+  try {
+    $("models").replaceChildren(...(await listModels(readSettings())).map((name) => new Option(name)));
+  } catch {}  // сервер може бути ще не запущений — список просто лишиться порожнім
+}
+// Показує в порожніх полях значення, які візьме модель (лише для Ollama; для інших рантаймів поля лишаються порожніми)
+async function showModelDefaults() {
+  const d = await modelDefaults(readSettings());
+  $("temperature").placeholder = d?.temperature ?? "";
+  $("topP").placeholder = d?.top_p ?? "";
+  $("topK").placeholder = d?.top_k ?? "";
+  $("numCtx").placeholder = d?.loadedContext ?? "";
+}
+$("api").addEventListener("change", () => { syncOllamaOnlyFields(); refreshModels(); showModelDefaults(); });
+$("baseUrl").addEventListener("change", () => { refreshModels(); showModelDefaults(); });
+$("model").addEventListener("change", showModelDefaults);
+import { streamChat } from "./client.js";
+
+persistFields("chat-settings", SETTING_IDS);
+syncOllamaOnlyFields();
+refreshModels();
+showModelDefaults();
+
+const history = [];  // увесь діалог: сервер не памʼятає попередніх реплік, тож надсилаємо їх щоразу
+
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.textContent = text;
+  $("messages").append(div);
+  div.scrollIntoView({ block: "end" });
+  return div;
+}
+
+async function send(text) {
+  history.push({ role: "user", content: text });
+  addMessage("user", text);
+  const bubble = addMessage("assistant", "…");
+  let answer = "";
+  try {
+    const cfg = readSettings();
+    cfg.maxTokens ??= 2000;  // запобіжник: без ліміту мала модель може зациклитись і генерувати безкінечно
+    const r = await streamChat(cfg, history, (piece) => {
+      answer += piece;
+      bubble.textContent = answer;
+    });
+    history.push({ role: "assistant", content: r.text });
+    const stats = document.createElement("div");
+    stats.className = "stats";
+    stats.textContent = `TTFT ${r.ttft.toFixed(2)} с · повна затримка ${r.latency.toFixed(2)} с`
+      + (r.tokens ? ` · ${r.tokens} токенів` : "") + (r.tokensPerS ? ` · ${r.tokensPerS.toFixed(0)} tokens/s` : "");
+    bubble.append(stats);
+    if (r.reasoning) {
+      const warning = document.createElement("div");
+      warning.className = "warning";
+      warning.textContent = "Модель міркувала перед відповіддю: TTFT включає час міркування, а tokens/s завищений.";
+      bubble.append(warning);
+    }
+  } catch (error) {
+    bubble.textContent = `Помилка: ${error.message}. Перевірте, що сервер запущено, а адреса й модель правильні.`;
+    bubble.classList.add("error");
+    history.pop();
+  }
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = $("input").value.trim();
+  if (!text) return;
+  $("input").value = "";
+  $("send").disabled = true;
+  await send(text);
+  $("send").disabled = false;
+  $("input").focus();
+});
+$("input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("form").requestSubmit(); }
+});
+$("clear").addEventListener("click", () => { history.length = 0; $("messages").replaceChildren(); });
+</script>
+</body>
+</html>
