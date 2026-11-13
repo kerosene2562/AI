@@ -1,0 +1,8 @@
+section,model,setting,metric,value,parameters,seconds,seconds_per_text
+miniGPT,v1,layers=2,val_loss,7.241347789764404,1946224,14.506843774000117,
+miniGPT,v2,layers=4,val_loss,7.184263388315837,2342000,20.782973780000248,
+zero-shot,MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli,Цей текст стосується {}.,accuracy,0.6111111111111112,106995075,1.8507025990002148,0.10281681105556749
+zero-shot,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli,Цей текст стосується {}.,accuracy,0.9444444444444444,278811651,125.07002508799997,6.948334727111109
+zero-shot,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli,Основна тема тексту: {}.,accuracy,1.0,278811651,125.16354207299992,6.953530115166662
+zero-shot,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli,Текст описує роботу у сфері {}.,accuracy,0.9444444444444444,278811651,133.42269660700003,7.4123720337222245
+zero-shot,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli,Професійний напрям цього профілю: {}.,accuracy,0.9444444444444444,278811651,131.836844379,7.324269132166667
